@@ -318,6 +318,9 @@ class ConnectionWorker implements AutoCloseable {
     @GuardedBy("lock")
     private long windowedQueuedRetriesMax;
 
+    @GuardedBy("lock")
+    private long windowedInflightBytesMax;
+
     private long windowedConnectionAttemptCount;
     private long windowedConnectionClosedCount;
 
@@ -327,6 +330,12 @@ class ConnectionWorker implements AutoCloseable {
       }
       if (currentRetryCount > windowedQueuedRetriesMax) {
         windowedQueuedRetriesMax = currentRetryCount;
+      }
+    }
+
+    void updateInflightBytesMax(long currentInflightBytes) {
+      if (currentInflightBytes > windowedInflightBytesMax) {
+        windowedInflightBytesMax = currentInflightBytes;
       }
     }
 
@@ -372,7 +381,7 @@ class ConnectionWorker implements AutoCloseable {
       long responseCount;
       long queuedRequestCountMax;
       long queuedRetryCountMax; // How many active waiting or inflight requests are retries
-      long inflightBytes;
+      long inflightBytesMax;
       long connectionAttemptCount;
       long connectionClosedCount;
       boolean isConnected; // snapshot at instant metrics are gathered
@@ -391,7 +400,7 @@ class ConnectionWorker implements AutoCloseable {
       healthCheckFields.queuedRequestCountMax = windowedQueuedRequestsMax;
       healthCheckFields.queuedRetryCountMax = windowedQueuedRetriesMax;
       healthCheckFields.msecLongestResponseWaitTime = windowedMilliResponseWaitTimeMax;
-      healthCheckFields.inflightBytes = inflightBytes;
+      healthCheckFields.inflightBytesMax = windowedInflightBytesMax;
       healthCheckFields.requestsSentCount = windowedRequestsSent;
       healthCheckFields.responseCount = windowedResponsesAcked;
       if (HEALTH_CHECK_INTERVAL.toMillis() > 0) {
@@ -417,7 +426,7 @@ class ConnectionWorker implements AutoCloseable {
      */
     private boolean checkThresholds(HealthCheckFields healthCheckFields) {
       if ((healthCheckFields.queuedRequestCountMax >= queuedRequestsThreshold)
-          || (healthCheckFields.inflightBytes >= queuedBytesThreshold)
+          || (healthCheckFields.inflightBytesMax >= queuedBytesThreshold)
           || (healthCheckFields.msecLongestResponseWaitTime >= responseWaitTimeThreshold.toMillis())
           || (healthCheckFields.msecMaxLatency >= latencyThreshold.toMillis())
           || (healthCheckFields.connectionAttemptCount >= connectionAttemptThreshold)
@@ -471,6 +480,7 @@ class ConnectionWorker implements AutoCloseable {
       windowedConnectionClosedCount = 0;
       windowedQueuedRequestsMax = 0;
       windowedQueuedRetriesMax = 0;
+      windowedInflightBytesMax = 0;
     }
 
     /*
@@ -782,6 +792,7 @@ class ConnectionWorker implements AutoCloseable {
       AppendRequestAndResponse requestWrapper, boolean addToFront) {
     ++this.inflightRequests;
     this.inflightBytes += requestWrapper.messageSize;
+    healthCheckMetrics.updateInflightBytesMax(this.inflightBytes);
     hasMessageInWaitingQueue.signal();
     requestProfilerHook.startOperation(
         RequestProfiler.OperationName.WAIT_QUEUE, requestWrapper.requestUniqueId);
@@ -929,6 +940,7 @@ class ConnectionWorker implements AutoCloseable {
       requestProfilerHook.startOperation(RequestProfiler.OperationName.WAIT_QUEUE, requestUniqueId);
       ++this.inflightRequests;
       this.inflightBytes += requestWrapper.messageSize;
+      healthCheckMetrics.updateInflightBytesMax(this.inflightBytes);
       requestWrapper.placedInWaitingQueueTime = Instant.now();
       waitingRequestQueue.addLast(requestWrapper);
       healthCheckMetrics.updateWindowedQueuedRequestsMax(

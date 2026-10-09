@@ -1216,7 +1216,7 @@ class ConnectionWorkerTest {
         healthCheckFields.msecLongestResponseWaitTime > 1
             && healthCheckFields.msecLongestResponseWaitTime < msecResponseDelay);
     assertEquals(appendCount, healthCheckFields.queuedRequestCountMax);
-    assertEquals(appendCount * sizePerRequest, healthCheckFields.inflightBytes);
+    assertEquals(appendCount * sizePerRequest, healthCheckFields.inflightBytesMax);
     assertEquals("MULTIPLEXING", healthCheckFields.streamName);
     assertEquals(connectionWorker.getWriterId(), healthCheckFields.writerId);
 
@@ -1284,7 +1284,7 @@ class ConnectionWorkerTest {
     fields.responseCount = 0;
     fields.queuedRequestCountMax = 0;
     fields.queuedRetryCountMax = 0;
-    fields.inflightBytes = 0;
+    fields.inflightBytesMax = 0;
     fields.connectionAttemptCount = 0;
     fields.connectionClosedCount = 0;
     fields.isConnected = false;
@@ -1336,9 +1336,9 @@ class ConnectionWorkerTest {
     fields.queuedRetryCountMax = 0;
 
     // inflightBytes >= queuedBytesThreshold (52428800)
-    fields.inflightBytes = 50 * 1024 * 1024;
+    fields.inflightBytesMax = 50 * 1024 * 1024;
     assertEquals(true, connectionWorker.checkTestOnlyHealthCheckThresholds(fields));
-    fields.inflightBytes = 0;
+    fields.inflightBytesMax = 0;
 
     // connectionAttemptCount >= connectionAttemptThreshold (1)
     fields.connectionAttemptCount = 1;
